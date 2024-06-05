@@ -1,86 +1,46 @@
+from rediscluster import RedisCluster
 import redis
-from redis.cluster import RedisCluster
 
-def migrate_data(redis_cluster_a_nodes, redis_cluster_b_endpoint, redis_cluster_b_port, db=0, redis_cluster_b_password=None):
-    """
-    Migrates data from Redis Cluster A to AWS ElastiCache for Redis, handling various data types.
+# Function to fetch all keys from the source Redis cluster
+def fetch_all_keys(source_redis):
+    keys = set()
+    for node in source_redis.get_nodes():
+        keys.update(source_redis.keys('*', target_nodes=node))
+    return list(keys)
 
-    Args:
-        redis_cluster_a_nodes (list): List of startup nodes for Redis Cluster A.
-        redis_cluster_b_endpoint (str): Endpoint of your AWS ElastiCache for Redis cluster.
-        redis_cluster_b_port (int): Port of your AWS ElastiCache for Redis cluster.
-        db (int, optional): Database number to migrate data from. Defaults to 0.
-        redis_cluster_b_password (str, optional): Password for your AWS ElastiCache for Redis cluster (if applicable).
-    """
+# Function to copy data from source to destination
+def copy_data(source_redis, dest_redis, keys):
+    for key in keys:
+        value = source_redis.dump(key)
+        ttl = source_redis.ttl(key)
+        dest_redis.restore(key, ttl * 1000 if ttl > 0 else 0, value)
 
-    try:
-        # Connect to Redis Cluster A
-        redis_cluster_a = RedisCluster(startup_nodes=redis_cluster_a_nodes)
+# Configuration for the source Redis cluster
+source_redis_cluster = {
+    'startup_nodes': [
+        {'host': 'redis-cluster-1697815485.redis', 'port': '6379'}
+    ],
+    'decode_responses': True,
+}
 
-        # Connect to AWS ElastiCache for Redis
-        redis_cluster_b = redis.RedisCluster(connection_pool=redis.ConnectionPool(
-            host=redis_cluster_b_endpoint,
-            port=redis_cluster_b_port,
-            db=db,
-            password=redis_cluster_b_password,
-        ))
+# Configuration for the destination Redis cluster (AWS ElastiCache)
+dest_redis_cluster = {
+    'host': 'your-aws-elasticache-endpoint',
+    'port': 6379,
+    'decode_responses': True,
+}
 
-        # Iterate through keys in Redis Cluster A using SCAN
-        cursor = 0
-        while True:
-            cursor, keys = redis_cluster_a.scan(cursor=cursor, match='*', count=1000)
-            if not keys:
-                break
+if __name__ == "__main__":
+    # Connect to the source Redis cluster
+    source_redis = RedisCluster(**source_redis_cluster)
+    
+    # Connect to the destination Redis cluster
+    dest_redis = redis.Redis(**dest_redis_cluster)
 
-            # Migrate data in batches using a pipeline for efficiency
-            with redis_cluster_b.pipeline() as pipe:
-                for key in keys:
-                    try:
-                        # Get the data type and value from Redis Cluster A
-                        data_type = redis_cluster_a.type(key)
-                        value = redis_cluster_a.get(key)
+    # Fetch all keys from the source Redis cluster
+    keys = fetch_all_keys(source_redis)
+    print(f"Fetched {len(keys)} keys from the source Redis cluster.")
 
-                        # Handle different data types
-                        if data_type == b'string':
-                            value_to_migrate = value
-                        elif data_type == b'list':
-                            value_to_migrate = value  # List itself is the value
-                        elif data_type == b'set':
-                            value_to_migrate = value  # Set itself is the value
-                        elif data_type == b'zset':
-                            # Handle sorted sets with scores: (member, score) tuples
-                            for member, score in redis_cluster_a.zrange(key, 0, -1, withscores=True):
-                                pipe.zadd(key, score, member)
-                        elif data_type == b'hash':
-                            value_to_migrate = value  # Hash itself is the value
-                        else:
-                            print(f"Warning: Unsupported data type '{data_type.decode()}' for key '{key.decode()}'")
-                            continue  # Skip migrating this key
-
-                        # Use value_to_migrate for migration to ElastiCache
-                        pipe.set(key, value_to_migrate)  # Or use appropriate command for other data types
-
-                        # Execute the pipeline commands for efficient data transfer
-                        pipe.execute()
-                    except Exception as e:
-                        print(f"Error migrating key '{key.decode()}': {e}")
-
-        print("Data migration complete!")
-
-    except redis.exceptions.ConnectionError as e:
-        print(f"Error connecting to Redis clusters: {e}")
-    except Exception as e:
-        print(f"Unexpected error during migration: {e}")
-
-# Replace with the actual startup nodes and ElastiCache configuration
-redis_cluster_a_nodes = [
-    {'host': 'redis-cluster-1697815485.redis', 'port': 6379},
-    # ... add more nodes if needed
-]
-redis_cluster_b_endpoint = "your-elastiache-endpoint"
-redis_cluster_b_port = 6379
-
-# Adjust database number if necessary
-db = 0
-
-migrate_data(redis_cluster_a_nodes, redis_cluster_b_endpoint, redis_cluster_b_port, db, redis_cluster_b_password)
+    # Copy data from source to destination
+    copy_data(source_redis, dest_redis, keys)
+    print(f"Copied {len(keys)} keys to the destination Redis cluster.")
