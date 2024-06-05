@@ -41,17 +41,12 @@ if __name__ == "__main__":
     source_redis = RedisCluster(**source_redis_cluster)
 
     # Connect to the destination Redis cluster
-    try:
-        dest_redis = RedisCluster(**dest_redis_cluster)
-    except rediscluster.exceptions.RedisClusterException as e:
-        print(f"Failed to connect to destination Redis cluster: {e}")
-        dest_redis = None
+    dest_redis = RedisCluster(**dest_redis_cluster)
 
-    if dest_redis:
-        # Fetch all keys from the source Redis cluster
-        keys = fetch_all_keys(source_redis)
-        print(f"Fetched {len(keys)} keys from the source Redis cluster.")
+    # Fetch all keys from the source Redis cluster
+    keys = fetch_all_keys(source_redis)
+    print(f"Fetched {len(keys)} keys from the source Redis cluster.")
 
-        # Copy data from source to destination
-        copy_data(source_redis, dest_redis, keys)
-        print(f"Copied {len(keys)} keys to the destination Redis cluster.")
+    # Copy data from source to destination
+    copy_data(source_redis, dest_redis, keys)
+    print(f"Copied {len(keys)} keys to the destination Redis cluster.")
