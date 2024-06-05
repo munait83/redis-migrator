@@ -10,12 +10,12 @@ async function fetchAllKeys(sourceRedis) {
 async function copyData(sourceRedis, destRedis, keys) {
     for (const key of keys) {
         try {
-            const value = await sourceRedis.dump(key);
+            const value = await sourceRedis.get(key);
             const ttl = await sourceRedis.ttl(key);
             if (ttl > 0) {
-                await destRedis.restore(key, ttl * 1000, value, 'REPLACE');
+                await destRedis.set(key, value, 'EX', ttl);
             } else {
-                await destRedis.restore(key, 0, value, 'REPLACE');
+                await destRedis.set(key, value);
             }
         } catch (error) {
             console.error(`Failed to copy key ${key}: ${error.message}`);
