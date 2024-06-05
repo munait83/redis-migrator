@@ -1,14 +1,16 @@
 import redis
 from redis.cluster import RedisCluster
 
-def migrate_data(redis_cluster_a_nodes, redis_cluster_b_nodes, db=0):
+def migrate_data(redis_cluster_a_nodes, redis_cluster_b_endpoint, redis_cluster_b_port, db=0, redis_cluster_b_password=None):
     """
-    Migrates data from Redis Cluster A to Redis Cluster B, handling various data types.
+    Migrates data from Redis Cluster A to AWS ElastiCache for Redis, handling various data types.
 
     Args:
         redis_cluster_a_nodes (list): List of startup nodes for Redis Cluster A.
-        redis_cluster_b_nodes (list): List of startup nodes for Redis Cluster B.
+        redis_cluster_b_endpoint (str): Endpoint of your AWS ElastiCache for Redis cluster.
+        redis_cluster_b_port (int): Port of your AWS ElastiCache for Redis cluster.
         db (int, optional): Database number to migrate data from. Defaults to 0.
+        redis_cluster_b_password (str, optional): Password for your AWS ElastiCache for Redis cluster (if applicable).
     """
 
     try:
@@ -17,10 +19,10 @@ def migrate_data(redis_cluster_a_nodes, redis_cluster_b_nodes, db=0):
 
         # Connect to AWS ElastiCache for Redis
         redis_cluster_b = redis.RedisCluster(connection_pool=redis.ConnectionPool(
-            host=...,  # Replace with your ElastiCache endpoint
-            port=...,  # Replace with your ElastiCache port
+            host=redis_cluster_b_endpoint,
+            port=redis_cluster_b_port,
             db=db,
-            password=...,  # Replace with your ElastiCache password (if applicable)
+            password=redis_cluster_b_password,
         ))
 
         # Iterate through keys in Redis Cluster A using SCAN
@@ -40,19 +42,23 @@ def migrate_data(redis_cluster_a_nodes, redis_cluster_b_nodes, db=0):
 
                         # Handle different data types
                         if data_type == b'string':
-                            pipe.set(key, value)
+                            value_to_migrate = value
                         elif data_type == b'list':
-                            pipe.lpush(key, *value)  # Unpack list elements for LPUSH
+                            value_to_migrate = value  # List itself is the value
                         elif data_type == b'set':
-                            pipe.sadd(key, *value)  # Unpack set elements for SADD
+                            value_to_migrate = value  # Set itself is the value
                         elif data_type == b'zset':
                             # Handle sorted sets with scores: (member, score) tuples
                             for member, score in redis_cluster_a.zrange(key, 0, -1, withscores=True):
                                 pipe.zadd(key, score, member)
                         elif data_type == b'hash':
-                            pipe.hmset(key, redis_cluster_a.hgetall(key))
+                            value_to_migrate = value  # Hash itself is the value
                         else:
                             print(f"Warning: Unsupported data type '{data_type.decode()}' for key '{key.decode()}'")
+                            continue  # Skip migrating this key
+
+                        # Use value_to_migrate for migration to ElastiCache
+                        pipe.set(key, value_to_migrate)  # Or use appropriate command for other data types
 
                         # Execute the pipeline commands for efficient data transfer
                         pipe.execute()
@@ -68,13 +74,13 @@ def migrate_data(redis_cluster_a_nodes, redis_cluster_b_nodes, db=0):
 
 # Replace with the actual startup nodes and ElastiCache configuration
 redis_cluster_a_nodes = [
-    {'host': 'cluster-a-node1', 'port': 6379},
-    {'host': 'cluster-a-node2', 'port': 6379},
+    {'host': 'redis-cluster-1697815485.redis', 'port': 6379},
     # ... add more nodes if needed
 ]
-redis_cluster_b_nodes = []  # Not used for ElastiCache connection
+redis_cluster_b_endpoint = "your-elastiache-endpoint"
+redis_cluster_b_port = 6379
 
 # Adjust database number if necessary
 db = 0
 
-migrate_data(redis_cluster_a_nodes, redis_cluster_b_nodes, db)
+migrate_data(redis_cluster_a_nodes, redis_cluster_b_endpoint, redis_cluster_b_port, db, redis_cluster_b_password)
