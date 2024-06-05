@@ -10,12 +10,32 @@ async function fetchAllKeys(sourceRedis) {
 async function copyData(sourceRedis, destRedis, keys) {
     for (const key of keys) {
         try {
-            const value = await sourceRedis.get(key);
-            const ttl = await sourceRedis.ttl(key);
-            if (ttl > 0) {
-                await destRedis.set(key, value, 'EX', ttl);
-            } else {
-                await destRedis.set(key, value);
+            const type = await sourceRedis.type(key);
+            if (type === 'string') {
+                const value = await sourceRedis.get(key);
+                const ttl = await sourceRedis.ttl(key);
+                if (ttl > 0) {
+                    await destRedis.set(key, value, 'EX', ttl);
+                } else {
+                    await destRedis.set(key, value);
+                }
+            } else if (type === 'list') {
+                const length = await sourceRedis.llen(key);
+                for (let i = 0; i < length; i++) {
+                    const value = await sourceRedis.lindex(key, i);
+                    await destRedis.rpush(key, value);
+                }
+            } else if (type === 'set') {
+                const members = await sourceRedis.smembers(key);
+                await destRedis.sadd(key, ...members);
+            } else if (type === 'zset') {
+                const members = await sourceRedis.zrange(key, 0, -1, 'WITHSCORES');
+                for (let i = 0; i < members.length; i += 2) {
+                    await destRedis.zadd(key, members[i + 1], members[i]);
+                }
+            } else if (type === 'hash') {
+                const hash = await sourceRedis.hgetall(key);
+                await destRedis.hmset(key, hash);
             }
         } catch (error) {
             console.error(`Failed to copy key ${key}: ${error.message}`);
@@ -23,7 +43,6 @@ async function copyData(sourceRedis, destRedis, keys) {
     }
 }
 
-// Configuration for the source Redis cluster
 const sourceRedisCluster = [
     { host: 'redis-cluster-1697815485.redis', port: '6379' }
 ];
@@ -32,7 +51,6 @@ const sourceRedisCluster = [
 const destRedisCluster = [
     { host: 'depot360-redis-cluster.ui6pmw.clustercfg.use1.cache.amazonaws.com', port: '6379' }
 ];
-
 (async () => {
     // Connect to the source Redis cluster
     const sourceRedis = new Redis.Cluster(sourceRedisCluster);
