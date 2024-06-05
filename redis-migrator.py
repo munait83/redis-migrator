@@ -11,23 +11,29 @@ def fetch_all_keys(source_redis):
 # Function to copy data from source to destination
 def copy_data(source_redis, dest_redis, keys):
     for key in keys:
-        value = source_redis.dump(key)
-        ttl = source_redis.ttl(key)
-        dest_redis.restore(key, ttl * 1000 if ttl > 0 else 0, value)
+        try:
+            value = source_redis.dump(key)
+            ttl = source_redis.ttl(key)
+            if ttl > 0:
+                dest_redis.restore(key, ttl * 1000, value, replace=True)
+            else:
+                dest_redis.restore(key, 0, value, replace=True)
+        except redis.exceptions.ResponseError as e:
+            print(f"Failed to copy key {key}: {e}")
 
 # Configuration for the source Redis cluster
 source_redis_cluster = {
     'startup_nodes': [
         {'host': 'redis-cluster-1697815485.redis', 'port': '6379'}
     ],
-    'decode_responses': True,
+    'decode_responses': False,  # Set to False to handle binary data
 }
 
 # Configuration for the destination Redis cluster (AWS ElastiCache)
 dest_redis_cluster = {
     'host': 'your-aws-elasticache-endpoint',
     'port': 6379,
-    'decode_responses': True,
+    'decode_responses': False,  # Set to False to handle binary data
 }
 
 if __name__ == "__main__":
