@@ -1,5 +1,4 @@
 from rediscluster import RedisCluster
-import redis
 
 # Function to fetch all keys from the source Redis cluster
 def fetch_all_keys(source_redis):
@@ -31,8 +30,9 @@ source_redis_cluster = {
 
 # Configuration for the destination Redis cluster (AWS ElastiCache)
 dest_redis_cluster = {
-    'host': 'your-aws-elasticache-endpoint',
-    'port': 6379,
+    'startup_nodes': [
+        {'host': 'clustercfg.depot360-redis-cluster.ui6pmw.use1.cache.amazonaws.com', 'port': '6379'}
+    ],
     'decode_responses': False,  # Set to False to handle binary data
 }
 
@@ -41,7 +41,7 @@ if __name__ == "__main__":
     source_redis = RedisCluster(**source_redis_cluster)
     
     # Connect to the destination Redis cluster
-    dest_redis = redis.Redis(**dest_redis_cluster)
+    dest_redis = RedisCluster(**dest_redis_cluster)
 
     # Fetch all keys from the source Redis cluster
     keys = fetch_all_keys(source_redis)
