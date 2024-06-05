@@ -4,8 +4,8 @@ import redis
 # Function to fetch all keys from the source Redis cluster
 def fetch_all_keys(source_redis):
     keys = set()
-    for node in source_redis.get_nodes():
-        keys.update(source_redis.keys('*', target_nodes=node))
+    for key in source_redis.scan_iter('*'):
+        keys.add(key)
     return list(keys)
 
 # Function to copy data from source to destination
