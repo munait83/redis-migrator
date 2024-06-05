@@ -11,6 +11,8 @@ async function copyData(sourceRedis, destRedis, keys) {
     for (const key of keys) {
         try {
             const type = await sourceRedis.type(key);
+            console.log(`Copying key: ${key} of type: ${type}`);
+            
             if (type === 'string') {
                 const value = await sourceRedis.get(key);
                 const ttl = await sourceRedis.ttl(key);
@@ -37,12 +39,14 @@ async function copyData(sourceRedis, destRedis, keys) {
                 const hash = await sourceRedis.hgetall(key);
                 await destRedis.hmset(key, hash);
             }
+            console.log(`Successfully copied key: ${key}`);
         } catch (error) {
             console.error(`Failed to copy key ${key}: ${error.message}`);
         }
     }
 }
 
+// Configuration for the source Redis cluster
 const sourceRedisCluster = [
     { host: 'redis-cluster-1697815485.redis', port: '6379' }
 ];
@@ -51,6 +55,7 @@ const sourceRedisCluster = [
 const destRedisCluster = [
     { host: 'depot360-redis-cluster.ui6pmw.clustercfg.use1.cache.amazonaws.com', port: '6379' }
 ];
+
 (async () => {
     // Connect to the source Redis cluster
     const sourceRedis = new Redis.Cluster(sourceRedisCluster);
